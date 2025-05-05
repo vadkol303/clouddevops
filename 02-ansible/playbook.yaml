@@ -1,0 +1,100 @@
+---
+- name: Deploy Docker, web app containers, and Nginx load balancer
+  hosts: vm
+  become: true
+  vars:
+    container_count: 3
+    container_name: echo-api
+    container_image: vadkol3/echo-api:latest
+    registry_password: пароль репозитория # Запускал локально, поэтому указал явно, но лучше использовать vault
+    nginx_conf_path: /etc/nginx/nginx.conf
+
+  tasks:
+    - name: Install required system packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+        state: latest
+        update_cache: true
+
+    - name: Add Docker GPG apt key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu jammy stable
+        state: present
+
+    - name: Install Docker CE
+      apt:
+        name: docker-ce
+        state: latest
+        update_cache: true
+
+    - name: Install Docker Python module
+      pip:
+        name: docker
+        state: latest
+
+    - name: Ensure Docker is running and enabled
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user | default('vboxuser') }}"
+        groups: docker
+        append: yes
+
+    - name: Log into private registry
+      community.docker.docker_login:
+        registry: docker.io
+        username: "{{ registry_user }}"
+        password: "{{ registry_password }}"
+
+    - name: Pull webapp image
+      community.docker.docker_image:
+        name: "{{ container_image }}"
+        source: pull
+
+    - name: Create webapp containers
+      community.docker.docker_container:
+        name: "{{ container_name }}{{ item }}"
+        image: "{{ container_image }}"
+        state: started
+        ports:
+          - "{{ 8080 + item }}:80" # Порты для контейнеров
+      loop: "{{ range(1, container_count + 1) | list }}"
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: latest
+        update_cache: true
+
+    - name: Copy Nginx configuration
+      copy:
+        src: files/nginx.conf
+        dest: "{{ nginx_conf_path }}"
+        mode: '0644'
+      notify: Reload Nginx
+
+    - name: Ensure Nginx is running
+      service:
+        name: nginx
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded
