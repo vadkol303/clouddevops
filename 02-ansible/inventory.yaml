@@ -1,0 +1,6 @@
+all:
+  hosts:
+    vm:
+      ansible_host: <IPV4>  # Ansible запускал через WSL, поэтому адрес указал через IPV4
+      ansible_user: vboxuser
+      ansible_ssh_port: 2222 # Порт для подключения к ВМ, через NAT c пробросом портов
