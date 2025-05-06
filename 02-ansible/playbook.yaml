@@ -4,12 +4,14 @@
   become: true
   vars:
     container_count: 3
-    container_name: echo-api
+    container_name: webapp
     container_image: vadkol3/echo-api:latest
-    registry_password: пароль репозитория # Запускал локально, поэтому указал явно, но лучше использовать vault
+    registry_user: vadkol3
+    registry_password: <пароль от приватного реестра>
     nginx_conf_path: /etc/nginx/nginx.conf
 
   tasks:
+    # Установка зависимостей для Docker
     - name: Install required system packages
       apt:
         pkg:
@@ -21,65 +23,83 @@
         state: latest
         update_cache: true
 
+    # Добавление GPG-ключа Docker
     - name: Add Docker GPG apt key
       apt_key:
         url: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
+    # Добавление репозитория Docker
     - name: Add Docker repository
       apt_repository:
         repo: deb https://download.docker.com/linux/ubuntu jammy stable
         state: present
 
+    # Установка Docker CE
     - name: Install Docker CE
       apt:
         name: docker-ce
         state: latest
         update_cache: true
 
+    # Установка Docker Python модуля
     - name: Install Docker Python module
       pip:
         name: docker
         state: latest
 
+    # Установка Python-модуля для работы через Unix-сокеты Docker
+    - name: Install requests-unixsocket module
+      pip:
+        name: requests-unixsocket
+        state: latest
+
+    # Запуск и автозапуск Docker
     - name: Ensure Docker is running and enabled
       service:
         name: docker
         state: started
         enabled: true
 
+    # Добавление пользователя в группу docker
     - name: Add user to docker group
       user:
         name: "{{ ansible_user | default('vboxuser') }}"
         groups: docker
         append: yes
 
-    - name: Log into private registry
-      community.docker.docker_login:
-        registry: docker.io
-        username: "{{ registry_user }}"
-        password: "{{ registry_password }}"
+    # Авторизация в приватном регистре
+    - name: Log in to Docker Registry via CLI
+      command: >
+        docker login
+          --username {{ registry_user }}
+          --password {{ registry_password }}
+      register: login_out
+      changed_when: "'Login Succeeded' in login_out.stdout"
 
-    - name: Pull webapp image
-      community.docker.docker_image:
-        name: "{{ container_image }}"
-        source: pull
+    # Загрузка образа из приватного регистра
+    - name: Pull webapp image via CLI
+      command: docker pull "{{ container_image }}"
+      register: pull_out
+      changed_when: "'Downloaded newer image' in pull_out.stdout or 'Image is up to date' in pull_out.stdout"
 
-    - name: Create webapp containers
-      community.docker.docker_container:
-        name: "{{ container_name }}{{ item }}"
-        image: "{{ container_image }}"
-        state: started
-        ports:
-          - "{{ 8080 + item }}:80" # Порты для контейнеров
+    # Запуск контейнеров с веб-приложением
+    - name: Create webapp containers via CLI
+      command: >
+        docker run -d --name {{ container_name }}{{ item }}
+        -p {{ 8080 + item }}:8000 {{ container_image }}
       loop: "{{ range(1, container_count + 1) | list }}"
+      args:
+        creates: "/var/lib/docker/containers/{{ container_name }}{{ item }}"
 
+    # Установка Nginx
     - name: Install Nginx
       apt:
         name: nginx
         state: latest
         update_cache: true
 
+    # Копирование конфигурации Nginx
     - name: Copy Nginx configuration
       copy:
         src: files/nginx.conf
@@ -87,6 +107,7 @@
         mode: '0644'
       notify: Reload Nginx
 
+    # Запуск Nginx
     - name: Ensure Nginx is running
       service:
         name: nginx
