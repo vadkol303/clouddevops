@@ -1,4 +1,4 @@
-1. 'docker run -it --rm ubuntu bash' - вход в контейнер
+1. `docker run -it --rm ubuntu bash` - вход в контейнер
 2. `apt-get update` — срабатывает.  
 3. Заменяем резолвер на localhost:  
    ```bash
