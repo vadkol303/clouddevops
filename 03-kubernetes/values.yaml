@@ -1,0 +1,44 @@
+namespace:
+  name: echo-app-ns
+  create: true
+
+image:
+  repository: vadkol3/echo-api
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - name: registry-secret   
+
+replicaCount: 3
+
+environment:
+  author: "Владислав Колчин"
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  hosts:
+    - host: echo-app.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
