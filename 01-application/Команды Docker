@@ -1,1 +1,6 @@
-
+Команды использовавшиеся для пуша образа
+1.docker build -t echo-api -f docker.dockerfile .
+2.docker login -u vadkol3
+--ввод пароля
+3.docker tag echo-api vadkol3/echo-api:latest
+4.docker push vadkol3/echo-api:latest
